@@ -19,6 +19,10 @@ type Context struct {
 	Params map[string]string
 	// 返回信息
 	StatusCode int
+
+	// 中间件
+	handlers []HandlerFunc
+	index    int
 }
 
 // newContext 根绝输入的w和req返回一个Context的指针
@@ -28,6 +32,16 @@ func newContext(w http.ResponseWriter, req *http.Request) *Context {
 		Req:    req,
 		Path:   req.URL.Path,
 		Method: req.Method,
+		index:  -1,
+	}
+}
+
+// 用于控制执行多个中间件的
+func (c *Context) Next() {
+	c.index++
+	s := len(c.handlers)
+	for ; c.index < s; c.index++ {
+		c.handlers[c.index](c)
 	}
 }
 

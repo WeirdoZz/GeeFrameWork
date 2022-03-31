@@ -81,8 +81,12 @@ func (r *router) handle(c *Context) {
 	if n != nil {
 		c.Params = params
 		key := c.Method + "-" + n.pattern
-		r.handlers[key](c)
+		c.handlers = append(c.handlers, r.handlers[key])
 	} else {
-		c.String(http.StatusNotFound, "404 NOT FOUND:%s\n", c.Path)
+		c.handlers = append(c.handlers, func(ctx *Context) {
+			ctx.String(http.StatusNotFound, "404 NOT FOUND:%s\n", c.Path)
+		})
 	}
+	//到这一步为止都是在给本次请求按顺序添加操作，现在才是执行
+	c.Next()
 }
