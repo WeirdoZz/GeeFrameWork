@@ -1,8 +1,10 @@
 package gee
 
 import (
+	"html/template"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 )
 
@@ -11,8 +13,10 @@ type HandlerFunc func(ctx *Context)
 type (
 	Engine struct {
 		*RouterGroup
-		router *router
-		groups []*RouterGroup
+		router        *router
+		groups        []*RouterGroup
+		htmlTemplates *template.Template
+		funcMap       template.FuncMap
 	}
 
 	RouterGroup struct {
@@ -64,6 +68,39 @@ func (group *RouterGroup) POST(pattern string, handler HandlerFunc) {
 	group.addRoute("POST", pattern, handler)
 }
 
+// createStaticHandler 创建静态的handler
+func (group *RouterGroup) createStaticHandler(relativePath string, fs http.FileSystem) HandlerFunc {
+	absolutePath := path.Join(group.prefix, relativePath)
+	fileServer := http.StripPrefix(absolutePath, http.FileServer(fs))
+	return func(ctx *Context) {
+		file := ctx.Param("filepath")
+
+		if _, err := fs.Open(file); err != nil {
+			ctx.Status(http.StatusNotFound)
+			return
+		}
+
+		fileServer.ServeHTTP(ctx.Writer, ctx.Req)
+	}
+}
+
+// Static 提供静态文件
+func (group *RouterGroup) Static(relativePath string, root string) {
+	handler := group.createStaticHandler(relativePath, http.Dir(root))
+	urlPattern := path.Join(relativePath, "/*filepath")
+	group.GET(urlPattern, handler)
+}
+
+// SetFuncMap 设置自定义的模板渲染函数
+func (e *Engine) SetFuncMap(funcmap template.FuncMap) {
+	e.funcMap = funcmap
+}
+
+// LoadHTMLGlob 将所有的模板加载近内存
+func (e *Engine) LoadHTMLGlob(pattern string) {
+	e.htmlTemplates = template.Must(template.New("").Funcs(e.funcMap).ParseGlob(pattern))
+}
+
 func (engine *Engine) Run(addr string) (err error) {
 	return http.ListenAndServe(addr, engine)
 }
@@ -77,5 +114,6 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	c := newContext(w, req)
 	c.handlers = middlewares
+	c.engine = engine
 	engine.router.handle(c)
 }

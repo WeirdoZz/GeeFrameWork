@@ -23,6 +23,8 @@ type Context struct {
 	// 中间件
 	handlers []HandlerFunc
 	index    int
+
+	engine *Engine
 }
 
 // newContext 根绝输入的w和req返回一个Context的指针
@@ -43,6 +45,11 @@ func (c *Context) Next() {
 	for ; c.index < s; c.index++ {
 		c.handlers[c.index](c)
 	}
+}
+
+func (c *Context) Fail(code int, err string) {
+	c.index = len(c.handlers)
+	c.JSON(code, H{"message": err})
 }
 
 // PostForm 解析表单中的数据
@@ -90,10 +97,12 @@ func (c *Context) Data(code int, data []byte) {
 }
 
 // HTML 返回html数据，本质上也是将html转成[]byte数据流再传回去
-func (c *Context) HTML(code int, html string) {
+func (c *Context) HTML(code int, name string, data interface{}) {
 	c.Status(code)
 	c.SetHeader("Content-Type", "text/html")
-	c.Writer.Write([]byte(html))
+	if err := c.engine.htmlTemplates.ExecuteTemplate(c.Writer, name, data); err != nil {
+		c.Fail(500, err.Error())
+	}
 }
 
 func (c *Context) Param(key string) string {
